@@ -4,7 +4,7 @@ from twitchio.ext import commands
 import random
 
 import os
-from beatsaber import bs_tools as bst
+from .beatsaber import bs_tools as bst
 from dotenv import load_dotenv
 
 # C:\Users\d0t\Desktop\DEV\Twitch_bot\Components\beatsaber\bsr.env
@@ -62,13 +62,13 @@ class BeatsaberComponent(commands.Component):
 
 
 
-    # @commands.command()
-    # async def say(self, ctx: commands.Context, *, message: str) -> None:
-    #     """Command which repeats what the invoker sends.
+    @commands.command()
+    async def say(self, ctx: commands.Context, *, message: str) -> None:
+        """Command which repeats what the invoker sends.
 
-    #     !say <message>
-    #     """
-    #     await ctx.send(message)
+        !say <message>
+        """
+        await ctx.send(message)
 
     # @commands.command()
     # async def add(self, ctx: commands.Context, left: int, right: int) -> None:
@@ -127,6 +127,7 @@ class BeatSaberPlaylist():
         self.obs_txt_path: str = os.getenv("OBS_REQUEST_TXT_PATH")
         self.is_open = False
         self.queue_limit: str = os.getenv("PLAYLIST_MAX_SIZE")
+        self.current_index = 0
         
         pass
 
@@ -147,14 +148,15 @@ class BeatSaberPlaylist():
                 passed_check = False
 
         if passed_check:
+            try:
+                self.actualize_obs_queue()
+            except Exception as e:
+                log += f"\n{log} - Failed to update the overlay. Reason: {e}"
             log += f"\n{log} - Added {key} to the playlist."
         else:
             log += f"\n{log} - Failed to add {key} to the playlist"
 
-        try:
-            self.actualize_obs_queue()
-        except Exception as e:
-            log += f"\n{log} - Failed to update the overlay. Reason: {e}"
+        
 
         return passed_check,log
 
@@ -169,28 +171,29 @@ class BeatSaberPlaylist():
         current_song_list = bst.get_songs_from_bplist(self.playlist_path)
 
         if len(current_song_list) >0:
-            current_text = f"Current: {current_song_list[self.current_index]['SongName']}\n"            
+            current_text = f"Current: {current_song_list[self.current_index]['songName']}\n"            
         else:
             current_text = "No songs in playlist."
 
 
         if self.current_index > 0:
-            previous_text = f"Previous: {current_song_list[self.current_index - 1]['SongName']}\n"
+            previous_text = f"Previous: {current_song_list[self.current_index - 1]['songName']}\n"
         else:
             previous_text = "No song. played for now"
 
         if self.current_index < len(current_song_list) -1:
-            next_text = f"Next: {current_song_list[self.current_index + 1]['SongName']}\n"
+            next_text = f"Next: {current_song_list[self.current_index + 1]['songName']}\n"
         else:
             next_text = "This is the last song in the cue."
 
-        bst.write_obs_txt(self.obs_queue_path+"current.txt", current_text)  
-        bst.write_obs_txt(self.obs_queue_path+"previous.txt", previous_text)
-        bst.write_obs_txt(self.obs_queue_path+"next.txt", next_text)
+        bst.write_obs_txt(self.obs_txt_path+"current.txt", current_text)  
+        bst.write_obs_txt(self.obs_txt_path+"previous.txt", previous_text)
+        bst.write_obs_txt(self.obs_txt_path+"next.txt", next_text)
 
 
 playlist = BeatSaberPlaylist()
 
 if __name__ == "__main__":
     playlist.reinitialize_playlist()
+    playlist.add_song_to_list('12345')
     

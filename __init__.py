@@ -28,8 +28,8 @@ if TYPE_CHECKING:
 from Components import Component_beatsaber as CBS
 from Components import Component_exemple as CBex
 component_list = [
-    # CBS.BeatsaberComponent,
-    CBex.MyComponent,
+    CBS.BeatsaberComponent,
+    # CBex.MyComponent,
     ]
 
 

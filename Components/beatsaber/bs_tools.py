@@ -2,12 +2,12 @@ import json
 import requests
 import os
 
-def add_song_to_bplist(file_path, new_song):
+def add_song_to_bplist(file_path, info):
     
     # Load the existing playlist data
     with open(file_path, 'rb') as f:
         playlist = json.load(f)
-
+    new_song = build_song_dic(info)
     # Append the new song to the songs list
     if 'songs' in playlist and isinstance(playlist['songs'], list):
         playlist['songs'].append(new_song)
@@ -15,7 +15,7 @@ def add_song_to_bplist(file_path, new_song):
         playlist['songs'] = [new_song]
 
     # Save the updated playlist data back to file
-    with open(file_path, 'wb') as f:
+    with open(file_path, 'w') as f:
         json.dump(playlist, f)
 
 def get_songs_from_bplist(file_path):
@@ -85,7 +85,7 @@ def build_song_dic(song_info):
 to_watch ={
     'declaredAi' : ['None'],
     'stats': {
-        'up_votes': 100,
+        'upvotes': 50,
         'score': .75,
     },
     'metadata': {
@@ -93,7 +93,7 @@ to_watch ={
     },
     'versions': {
 
-            'diffs': ['easy', 'normal', 'hard'],                
+            'diffs': ['Easy', 'Normal', 'Hard'],                
         
         }
 
@@ -111,8 +111,8 @@ def check_song_conditions(song_info,conditions=to_watch):
             case 'stats':
                 for k2,v2 in value.items():
                     match k2:
-                        case 'up_votes':
-                            if song_info.get('stats',{}).get('up_votes') < v2:
+                        case 'upvotes':
+                            if song_info.get('stats',{}).get('upvotes') < v2:
                                 return False,f' up votes < {v2}'
                         case 'score':
                             if song_info.get('stats',{}).get('score') < v2:
@@ -130,7 +130,7 @@ def check_song_conditions(song_info,conditions=to_watch):
                     for k2,v2 in value.items():
                         match k2:
                             case 'diffs':
-                                diff_list = song_info.get('diffs',[])
+                                diff_list = last.get('diffs',[])
                                 difficulty_check = False
                                 for diff in diff_list:
                                     if diff.get('difficulty',None) in v2:

@@ -6,9 +6,12 @@ import random
 import os
 from .beatsaber import bs_tools as bst
 from dotenv import load_dotenv
+import datetime
 
-# C:\Users\d0t\Desktop\DEV\Twitch_bot\Components\beatsaber\bsr.env
+
 load_dotenv(r'./Components/beatsaber/bsr.env')
+minimal_follow_time = 60
+
 
 
 
@@ -22,6 +25,22 @@ class BeatsaberComponent(commands.Component):
         # self.bot = bot
         pass
 
+    def is_meetting_condition():
+        def predicate(ctx: commands.Context) -> bool:
+            follow_info = ctx.chatter.follow_info()
+            if follow_info is None:
+                return False
+            else:
+                followed_at = follow_info.followed_at
+                follow_time = datetime.datetime.now()-followed_at
+            
+            if follow_time.total_seconds()<minimal_follow_time:
+                return False
+
+            return True
+
+        return commands.guard(predicate)
+
     # An example of listening to an event
     # We use a listener in our Component to display the messages received.
     @commands.Component.listener()
@@ -29,11 +48,18 @@ class BeatsaberComponent(commands.Component):
         print(f"[{payload.broadcaster.name}] - {payload.chatter.name}: {payload.text}")
 
     @commands.command()
-    async def help(self, ctx: commands.Context) -> None:
+    async def request(self, ctx: commands.Context) -> None:
         """Command that lists available commands for Beatsaber
         """
-        await ctx.reply(f"Hi {ctx.chatter}!")
+        message= f''' 
+        To request tracks, just send '!bsr key_of_the_track'
+        You can find keys on https://beatsaver.com
+        You need to follow for at least {minimal_follow_time} to request
+        Tracks need to meet channels requirement
+        '''
+        await ctx.reply(f"Hi {ctx.chatter}, {message}")
 
+    @is_meetting_condition()
     @commands.command()
     async def bsr(self, ctx: commands.Context, *, message: str) -> None:
         """user ask for a song to be added on the list:
@@ -50,25 +76,59 @@ class BeatsaberComponent(commands.Component):
                     explain why playlist is closed
         """
         try:
-            passed_check,log = playlist.add_song_to_list(message)
+            passed_check,log = playlist.add_song_to_list(message,
+                                                         requester=ctx.chatter
+                                                         )
         except Exception as e:
             passed_check = False
-            log = f"  Error adding song: {e}"
-
-        if passed_check:
-            await ctx.send(log)
-        else:
-            await ctx.send(log)
+            log = f"  Error while adding tracks: {e}"
 
 
+        await ctx.send(log)
 
+
+    @commands.is_elevated()
     @commands.command()
-    async def say(self, ctx: commands.Context, *, message: str) -> None:
-        """Command which repeats what the invoker sends.
-
-        !say <message>
+    async def bsr_ctrl(self, ctx: commands.Context, *, message: str) -> None:
+        """Command to control bsr playlists with command !bsr_ctrl
         """
-        await ctx.send(message)
+        match message:
+            case 'next':
+                playlist.change_index(1)
+            case 'previous':
+                playlist.change_index(-1)
+            case s if s.startswith('remove'):
+                ''' remove based on index '''
+                pass
+            case s if s.startswith('move'):
+                ''' remove based on index to index'''
+                pass
+            case s if s.startswith('extend'):
+                ''' add slot in the queue'''
+                try:
+                    message.replace('extend','')
+                    offset = int(message)
+                    playlist.queue_limit += offset
+                    await ctx.send(f'Beatsaber playlist limit is now {playlist.queue_limit}')
+                except:
+                    pass
+            case s if s.startswith('clear'):
+                playlist.reinitialize_playlist()
+                await ctx.send('Beatsaber playlist cleared')
+            case s if s.startswith('max_request'):
+                try:
+                    message.replace('max_request','')
+                    offset = int(message)
+                    playlist.queue_limit += offset
+                    await ctx.send(f'Max request per viewer limit is now {playlist.queue_limit}')
+                except:
+                    pass
+            case s:
+                pass
+
+
+
+        
 
     # @commands.command()
     # async def add(self, ctx: commands.Context, left: int, right: int) -> None:
@@ -127,45 +187,76 @@ class BeatSaberPlaylist():
         self.obs_txt_path: str = os.getenv("OBS_REQUEST_TXT_PATH")
         self.is_open = False
         self.queue_limit: str = os.getenv("PLAYLIST_MAX_SIZE")
+        self.max_request_per_viewer: str = os.getenv("MAX_REQUEST_PER_FOLLOWER")
+        request_conditions_path: str = os.getenv('REQUEST_CONDITIONS_PATH')
+        self.request_conditions = bst.load_json_as_dic(request_conditions_path)
         self.current_index = 0
         
         pass
 
-    def add_song_to_list(self, key:str) -> None:
-        current_song_list = bst.get_songs_from_bplist(self.playlist_path)
+    def add_song_to_list(self, key:str, requester : twitchio.Chatter) -> None:
+
+        file_path = self.playlist_path
+
+        current_song_list = bst.get_songs_from_bplist(file_path)
 
         if len(current_song_list) >= int(self.queue_limit):
             return False, 'Playlist is full.'
-
-        file_path = self.playlist_path
+        else:   
+            count = 0
+            for i,s in enumerate(current_song_list):
+                if s.get('requester','')==requester.display_name:
+                    count += 1
+                if s.get('key') == key:
+                    if i>self.current_index:
+                        return False, 'This track is already in the queue'
+                    else:
+                        return False, 'This track has already been played'
+        # check for already submitted song by this user
+        if (not requester.moderator and 
+            not requester.subscriber and 
+            not requester.broadcaster):
+            if count >= self.max_request_per_viewer:
+                return False, f'max request per viewer is {self.max_request_per_viewer}'
+        
         info = bst.get_song_info_by_id(key)
-        passed_check,log = bst.check_song_conditions(info)
+        if info is None:
+            return False, f'this key do not exist: {key}'
+
+        passed_check,log = bst.check_song_conditions(info,conditions=self.request_conditions)
         if passed_check:
             try:
-                bst.add_song_to_bplist(file_path,info)
+                bst.add_song_to_bplist(file_path,info, 
+                                       requester=requester.display_name
+                                       )
             except Exception as e:
-                log += f"\n{log} - Failed to add {key}. Reason: {e}"
+                log += f"\n Failed to add {key}. Reason: {e}"
                 passed_check = False
 
         if passed_check:
             try:
                 self.actualize_obs_queue()
             except Exception as e:
-                log += f"\n{log} - Failed to update the overlay. Reason: {e}"
-            log += f"\n{log} - Added {key} to the playlist."
+                log += f"\n Failed to update the overlay. Reason: {e}"
+            log += f"\n Added {key} to the playlist."
         else:
-            log += f"\n{log} - Failed to add {key} to the playlist"
-
-        
+            log += f"\n Failed to add {key} to the playlist"
 
         return passed_check,log
+    
 
+    def change_index(self,offset):
+        self.current_index = max(self.current_index+offset,0)
+        self.actualize_obs_queue()
+        pass
 
 
     def reinitialize_playlist(self) -> None:
         bst.clear_songs_from_bplist(self.playlist_path)
         self.current_index = 0
+        self.actualize_obs_queue()
         pass
+
 
     def actualize_obs_queue(self) -> None:
         current_song_list = bst.get_songs_from_bplist(self.playlist_path)

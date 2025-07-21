@@ -2,12 +2,24 @@ import json
 import requests
 import os
 
-def add_song_to_bplist(file_path, info):
+def load_json_as_dic(path):
+    with open(path, 'rb') as f:
+        dic = json.load(f)
+    return dic
+    
+def save_dic_as_json(dic,path):
+    with open(path, 'w') as f:
+        json.dump(dic, f)
+
+
+def add_song_to_bplist(file_path, info, requester_name = None):
     
     # Load the existing playlist data
-    with open(file_path, 'rb') as f:
-        playlist = json.load(f)
+    playlist = load_json_as_dic(file_path)
+
     new_song = build_song_dic(info)
+    if requester_name:
+        new_song['requester'] = requester_name
     # Append the new song to the songs list
     if 'songs' in playlist and isinstance(playlist['songs'], list):
         playlist['songs'].append(new_song)
@@ -15,13 +27,11 @@ def add_song_to_bplist(file_path, info):
         playlist['songs'] = [new_song]
 
     # Save the updated playlist data back to file
-    with open(file_path, 'w') as f:
-        json.dump(playlist, f)
+    save_dic_as_json(playlist,file_path)
 
 def get_songs_from_bplist(file_path):
     # Load the existing playlist data
-    with open(file_path, 'rb') as f:
-        playlist = json.load(f)
+    playlist = load_json_as_dic(file_path)
     return playlist['songs']
 
 def write_obs_txt(path, text):
@@ -31,16 +41,14 @@ def write_obs_txt(path, text):
 
 def clear_songs_from_bplist(file_path):
     # Load the existing playlist data
-    with open(file_path, 'rb') as f:
-        playlist = json.load(f)
+    playlist = load_json_as_dic(file_path)
 
     # Empty the songs list if it exists
     if 'songs' in playlist and isinstance(playlist['songs'], list):
         playlist['songs'].clear()
 
     # Save the updated playlist data back to file
-    with open(file_path, 'w') as f:
-        json.dump(playlist, f)
+    save_dic_as_json(playlist,file_path)
 
 def get_api_song_info(song_id):
     url = f"https://api.beatsaver.com/maps/id/{song_id}"
@@ -62,13 +70,11 @@ def get_song_info_by_id(song_id):
     file_path = os.path.join(cache_dir, song_file)
 
     if os.path.isfile(file_path):
-        with open(file_path, 'r') as f:
-            info = json.load(f)
+        info = load_json_as_dic(file_path)
     else:
         info = get_api_song_info(song_id)
         if info is not None:
-            with open(file_path, 'w') as f:
-                json.dump(info, f)
+            save_dic_as_json(info,file_path)
     return info
 
 def build_song_dic(song_info):
@@ -107,23 +113,23 @@ def check_song_conditions(song_info,conditions=to_watch):
         match k:
             case 'declaredAi':
                 if song_info.get('declaredAi','') not in value:
-                    return False,' AI generated'
+                    return False,' AI generated tracks cannot be addded'
             case 'stats':
                 for k2,v2 in value.items():
                     match k2:
                         case 'upvotes':
                             if song_info.get('stats',{}).get('upvotes') < v2:
-                                return False,f' up votes < {v2}'
+                                return False,f' Track need at least {v2} up votes to be added '
                         case 'score':
                             if song_info.get('stats',{}).get('score') < v2:
-                                return False,f' rating < {v2}'
+                                return False,f' Tracks rating need to be at least {v2}'
             case 'metadata':
                 for k2,v2 in value.items():
                     match k2:
                         case 'duration':
                             if (song_info.get('metadata',{}).get('duration') < v2[0]
                             or song_info.get('metadata',{}).get('duration') > v2[1]):
-                                return False,f' duration not in range{v2} seconds'
+                                return False,f' Track duration need to be beetween {v2[0]} and {v2[1]} seconds'
             case 'versions':
                 last = song_info.get('versions',[None])[-1]
                 if last is not [None]:
@@ -137,7 +143,7 @@ def check_song_conditions(song_info,conditions=to_watch):
                                         difficulty_check = True
                                         break
                                 if not difficulty_check:
-                                    return False,f'no difficulty in {v2} for this track'            
+                                    return False,f'At least one of those difficultys need to be available for the track to be allowed: {v2}'            
     return valid,log
 
 

@@ -1,18 +1,17 @@
 import twitchio
 from twitchio import eventsub
 from twitchio.ext import commands
-import random
+
 
 import os
 from .beatsaber import bs_tools as bst
-from dotenv import load_dotenv
+# from beatsaber import bs_tools as bst # for debug only
+
 import datetime
 
 
-load_dotenv(r'./Components/beatsaber/bsr.env')
+conf_path = r'./Components/beatsaber/bsr_conf.json'
 minimal_follow_time = 60
-
-
 
 
 class BeatsaberComponent(commands.Component):
@@ -55,7 +54,7 @@ class BeatsaberComponent(commands.Component):
         To request tracks, just send '!bsr key_of_the_track'
         You can find keys on https://beatsaver.com
         You need to follow for at least {minimal_follow_time} to request
-        Tracks need to meet channels requirement
+        Tracks need to meet channels rules and some minimal requirement
         '''
         await ctx.reply(f"Hi {ctx.chatter}, {message}")
 
@@ -183,13 +182,13 @@ class BeatsaberComponent(commands.Component):
 class BeatSaberPlaylist():
 
     def __init__(self):
-        self.playlist_path: str = os.getenv("CUSTOM_PLAYLIST_PATH")
-        self.obs_txt_path: str = os.getenv("OBS_REQUEST_TXT_PATH")
+        conf = bst.load_json_as_dic(conf_path)
+        self.playlist_path: str = conf.get("CUSTOM_PLAYLIST_PATH")
+        self.obs_txt_path: str = conf.get("OBS_REQUEST_TXT_PATH")
         self.is_open = False
-        self.queue_limit: str = os.getenv("PLAYLIST_MAX_SIZE")
-        self.max_request_per_viewer: str = os.getenv("MAX_REQUEST_PER_FOLLOWER")
-        request_conditions_path: str = os.getenv('REQUEST_CONDITIONS_PATH')
-        self.request_conditions = bst.load_json_as_dic(request_conditions_path)
+        self.queue_limit: str = conf.get("PLAYLIST_MAX_SIZE")
+        self.max_request_per_viewer: str = conf.get("MAX_REQUEST_PER_FOLLOWER")
+        self.request_conditions = conf.get("request_condition")
         self.current_index = 0
         
         pass
@@ -202,10 +201,12 @@ class BeatSaberPlaylist():
 
         if len(current_song_list) >= int(self.queue_limit):
             return False, 'Playlist is full.'
+        elif len(key)>5 or len(key)<4:
+            return False, 'This key is not valid'
         else:   
             count = 0
             for i,s in enumerate(current_song_list):
-                if s.get('requester','')==requester.display_name:
+                if requester and s.get('requester','')==requester.display_name:
                     count += 1
                 if s.get('key') == key:
                     if i>self.current_index:
@@ -213,7 +214,7 @@ class BeatSaberPlaylist():
                     else:
                         return False, 'This track has already been played'
         # check for already submitted song by this user
-        if (not requester.moderator and 
+        if requester and (not requester.moderator and 
             not requester.subscriber and 
             not requester.broadcaster):
             if count >= self.max_request_per_viewer:
@@ -235,10 +236,14 @@ class BeatSaberPlaylist():
 
         if passed_check:
             try:
+                song_name = info.get('songName',key)
+                
+                log = f"\n {song_name} was added to the playlist at position{len(current_song_list)} by {requester.display_name}."
                 self.actualize_obs_queue()
             except Exception as e:
                 log += f"\n Failed to update the overlay. Reason: {e}"
-            log += f"\n Added {key} to the playlist."
+            
+            
         else:
             log += f"\n Failed to add {key} to the playlist"
 
@@ -258,33 +263,45 @@ class BeatSaberPlaylist():
         pass
 
 
-    def actualize_obs_queue(self) -> None:
+    def actualize_obs_queue(self,
+                            keys = ['songName','requester'],
+                            indexes=[-1,0,1]) -> None:
         current_song_list = bst.get_songs_from_bplist(self.playlist_path)
 
-        if len(current_song_list) >0:
-            current_text = f"Current: {current_song_list[self.current_index]['songName']}\n"            
-        else:
-            current_text = "No songs in playlist."
+
+        for i in indexes:
+            ind = self.current_index+i
+            for k in keys:
+                text = ''
+                if ind >= 0 and ind<=len(current_song_list):
+                    text = current_song_list[ind].get(k,'')
+                bst.write_obs_txt(self.obs_txt_path+f"track_{str(ind)}_{k}.txt", text)  
 
 
-        if self.current_index > 0:
-            previous_text = f"Previous: {current_song_list[self.current_index - 1]['songName']}\n"
-        else:
-            previous_text = "No song. played for now"
+        # if len(current_song_list) >0:
+        #     current_text = f"Current: {current_song_list[self.current_index]['songName']}\n"            
+        # else:
+        #     current_text = "No songs in playlist."
 
-        if self.current_index < len(current_song_list) -1:
-            next_text = f"Next: {current_song_list[self.current_index + 1]['songName']}\n"
-        else:
-            next_text = "This is the last song in the cue."
 
-        bst.write_obs_txt(self.obs_txt_path+"current.txt", current_text)  
-        bst.write_obs_txt(self.obs_txt_path+"previous.txt", previous_text)
-        bst.write_obs_txt(self.obs_txt_path+"next.txt", next_text)
+        # if self.current_index > 0:
+        #     previous_text = f"Previous: {current_song_list[self.current_index - 1]['songName']}\n"
+        # else:
+        #     previous_text = "No song. played for now"
+
+        # if self.current_index < len(current_song_list) -1:
+        #     next_text = f"Next: {current_song_list[self.current_index + 1]['songName']}\n"
+        # else:
+        #     next_text = "This is the last song in the cue."
+
+        # bst.write_obs_txt(self.obs_txt_path+"current.txt", current_text)  
+        # bst.write_obs_txt(self.obs_txt_path+"previous.txt", previous_text)
+        # bst.write_obs_txt(self.obs_txt_path+"next.txt", next_text)
 
 
 playlist = BeatSaberPlaylist()
 
 if __name__ == "__main__":
-    playlist.reinitialize_playlist()
-    playlist.add_song_to_list('12345')
+    # playlist.reinitialize_playlist()
+    playlist.add_song_to_list('d1cc',requester=None)
     

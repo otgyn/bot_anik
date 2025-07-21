@@ -107,13 +107,21 @@ to_watch ={
     
 def check_song_conditions(song_info,conditions=to_watch):
     valid = True
-    log = "Songs Match all conditions"
+    log = "This track conditions"
 
     for k,value in conditions.items():
         match k:
             case 'declaredAi':
-                if song_info.get('declaredAi','') not in value:
+                if song_info.get(k,'') not in value:
                     return False,' AI generated tracks cannot be addded'
+            case 'nsfw':
+                if song_info.get(k,False) not in value:
+                    return False,' nsfw tracks cannot be addded'
+            case 'forbidden_words':
+                for word in value:
+                    for txt in [song_info.get('name',''),song_info.get('description','')]:                       
+                        if txt.lower().find(word) !=-1:
+                            return False,'This song seems to contain forbidden words'
             case 'stats':
                 for k2,v2 in value.items():
                     match k2:
@@ -150,7 +158,7 @@ def check_song_conditions(song_info,conditions=to_watch):
 
 if __name__ == "__main__":
     # Example usage
-    song_id = "48802"
+    song_id = "d1cc"
     song_info = get_song_info_by_id(song_id)
     print(song_info)
 

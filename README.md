@@ -47,3 +47,6 @@ Allow you to create custom '!' commands to trigger actions on you stream
 ### Custom component:
     to create a custom component, duplicate component_exemple.py, rename it, add it to your __init__.py component list and modify it to suit your needs 
 
+
+Scope:
+http://localhost:4343/oauth?scopes=user:read:chat%20user:write:chat%20user:bot%20moderator:read:followers&force_verify=true

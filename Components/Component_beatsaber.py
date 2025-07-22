@@ -25,15 +25,24 @@ class BeatsaberComponent(commands.Component):
         pass
 
     def is_meetting_condition():
-        def predicate(ctx: commands.Context) -> bool:
-            follow_info = ctx.chatter.follow_info()
+        async def predicate(ctx: commands.Context) -> bool:
+            follow_info = await ctx.chatter.follow_info()
+            if (ctx.chatter.broadcaster 
+                # or ctx.chatter.moderator
+                ):
+                return True
             if follow_info is None:
                 return False
             else:
-                followed_at = follow_info.followed_at
-                follow_time = datetime.datetime.now()-followed_at
+                # check if follow_inf as attribute followed_at
+                if hasattr(follow_info, "followed_at"):
+                    followed_at = follow_info.followed_at
+                    follow_time = datetime.datetime.now()-followed_at
+                    follow_time = follow_time.total_seconds()
+                else:
+                    follow_time = 0
             
-            if follow_time.total_seconds()<minimal_follow_time:
+            if follow_time<minimal_follow_time:
                 return False
 
             return True
@@ -53,10 +62,10 @@ class BeatsaberComponent(commands.Component):
         message= f''' 
         To request tracks, just send '!bsr key_of_the_track'
         You can find keys on https://beatsaver.com
-        You need to follow for at least {minimal_follow_time} to request
+        You need to follow for at least {minimal_follow_time}s to request
         Tracks need to meet channels rules and some minimal requirement
         '''
-        await ctx.reply(f"Hi {ctx.chatter}, {message}")
+        await ctx.reply(f"Hi {ctx.chatter.mention}, {message}")
 
     @is_meetting_condition()
     @commands.command()
@@ -73,6 +82,7 @@ class BeatsaberComponent(commands.Component):
                         "you need to follow the channel for request"
                 else:
                     explain why playlist is closed
+                todo add mention
         """
         try:
             passed_check,log = playlist.add_song_to_list(message,
@@ -83,19 +93,27 @@ class BeatsaberComponent(commands.Component):
             log = f"  Error while adding tracks: {e}"
 
 
-        await ctx.send(log)
+        await ctx.send(ctx.chatter.mention+': '+ log)
 
 
     @commands.is_elevated()
-    @commands.command()
+    @commands.command(aliases=['bs'])
     async def bsr_ctrl(self, ctx: commands.Context, *, message: str) -> None:
         """Command to control bsr playlists with command !bsr_ctrl
         """
         match message:
+            case 'open':
+                playlist.is_open = True
+                await ctx.send('Beatsaber playlist is open')
+            case 'close':
+                playlist.is_open = False
+                await ctx.send('Beatsaber playlist is closed')
             case 'next':
-                playlist.change_index(1)
+                current_song = playlist.change_index(1)
+                await ctx.send(f'Current song is {current_song.get('songName', '')} requested by {current_song.get('requester', '')}')
             case 'previous':
-                playlist.change_index(-1)
+                current_song = playlist.change_index(-1)
+                await ctx.send(f'Current song is {current_song.get('songName', '')} requested by {current_song.get('requester', '')}')
             case s if s.startswith('remove'):
                 ''' remove based on index '''
                 pass
@@ -126,59 +144,6 @@ class BeatsaberComponent(commands.Component):
                 pass
 
 
-
-        
-
-    # @commands.command()
-    # async def add(self, ctx: commands.Context, left: int, right: int) -> None:
-    #     """Command which adds to integers together.
-
-    #     !add <number> <number>
-    #     """
-    #     await ctx.reply(f"{left} + {right} = {left + right}")
-
-    # @commands.command()
-    # async def choice(self, ctx: commands.Context, *choices: str) -> None:
-    #     """Command which takes in an arbitrary amount of choices and randomly chooses one.
-
-    #     !choice <choice_1> <choice_2> <choice_3> ...
-    #     """
-    #     await ctx.reply(f"You provided {len(choices)} choices, I choose: {random.choice(choices)}")
-
-    # @commands.command(aliases=["thanks", "thank"])
-    # async def give(self, ctx: commands.Context, user: twitchio.User, amount: int, *, message: str | None = None) -> None:
-    #     """A more advanced example of a command which has makes use of the powerful argument parsing, argument converters and
-    #     aliases.
-
-    #     The first argument will be attempted to be converted to a User.
-    #     The second argument will be converted to an integer if possible.
-    #     The third argument is optional and will consume the reast of the message.
-
-    #     !give <@user|user_name> <number> [message]
-    #     !thank <@user|user_name> <number> [message]
-    #     !thanks <@user|user_name> <number> [message]
-    #     """
-    #     msg = f"with message: {message}" if message else ""
-    #     await ctx.send(f"{ctx.chatter.mention} gave {amount} thanks to {user.mention} {msg}")
-
-    # @commands.group(invoke_fallback=True)
-    # async def socials(self, ctx: commands.Context) -> None:
-    #     """Group command for our social links.
-
-    #     !socials
-    #     """
-    #     await ctx.send("discord.gg/..., youtube.com/..., twitch.tv/...")
-
-    # @socials.command(name="discord")
-    # async def socials_discord(self, ctx: commands.Context) -> None:
-    #     """Sub command of socials that sends only our discord invite.
-
-    #     !socials discord
-    #     """
-    #     await ctx.send("discord.gg/...")
-
-
-
 class BeatSaberPlaylist():
 
     def __init__(self):
@@ -201,6 +166,8 @@ class BeatSaberPlaylist():
 
         if len(current_song_list) >= int(self.queue_limit):
             return False, 'Playlist is full.'
+        elif not self.is_open:
+            return False, 'Playlist is closed.'
         elif len(key)>5 or len(key)<4:
             return False, 'This key is not valid'
         else:   
@@ -228,7 +195,7 @@ class BeatSaberPlaylist():
         if passed_check:
             try:
                 bst.add_song_to_bplist(file_path,info, 
-                                       requester=requester.display_name
+                                       requester_name=requester.display_name
                                        )
             except Exception as e:
                 log += f"\n Failed to add {key}. Reason: {e}"
@@ -236,9 +203,9 @@ class BeatSaberPlaylist():
 
         if passed_check:
             try:
-                song_name = info.get('songName',key)
+                song_name = info.get('name',key)
                 
-                log = f"\n {song_name} was added to the playlist at position{len(current_song_list)} by {requester.display_name}."
+                log = f"\n {song_name} was added to the playlist at position{len(current_song_list)}."
                 self.actualize_obs_queue()
             except Exception as e:
                 log += f"\n Failed to update the overlay. Reason: {e}"
@@ -253,7 +220,7 @@ class BeatSaberPlaylist():
     def change_index(self,offset):
         self.current_index = max(self.current_index+offset,0)
         self.actualize_obs_queue()
-        pass
+        return self.get_song_at_index(self.current_index)
 
 
     def reinitialize_playlist(self) -> None:
@@ -262,6 +229,11 @@ class BeatSaberPlaylist():
         self.actualize_obs_queue()
         pass
 
+    def get_song_at_index(self,index:int)->dict|None:
+        try:
+            return bst.get_songs_from_bplist(self.playlist_path)[index]
+        except Exception as e:
+            return {}
 
     def actualize_obs_queue(self,
                             keys = ['songName','requester'],
@@ -273,9 +245,9 @@ class BeatSaberPlaylist():
             ind = self.current_index+i
             for k in keys:
                 text = ''
-                if ind >= 0 and ind<=len(current_song_list):
+                if ind >= 0 and ind<len(current_song_list):
                     text = current_song_list[ind].get(k,'')
-                bst.write_obs_txt(self.obs_txt_path+f"track_{str(ind)}_{k}.txt", text)  
+                bst.write_obs_txt(self.obs_txt_path+f"track_{str(i)}_{k}.txt", text)  
 
 
         # if len(current_song_list) >0:

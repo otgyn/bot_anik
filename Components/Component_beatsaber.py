@@ -1,9 +1,11 @@
 import twitchio
 from twitchio import eventsub
 from twitchio.ext import commands
-
+import asyncio
 
 import os
+
+from .beatsaber.bsdatapuller_tools import BSDataListener
 from .beatsaber import bs_tools as bst
 # from beatsaber import bs_tools as bst # for debug only
 
@@ -148,7 +150,7 @@ class BeatsaberComponent(commands.Component):
 
 class BeatSaberPlaylist():
 
-    def __init__(self):
+    def __init__(self, add_data_listener=False):
         conf = bst.load_json_as_dic(conf_path)
         self.playlist_path: str = conf.get("CUSTOM_PLAYLIST_PATH")
         self.obs_txt_path: str = conf.get("OBS_REQUEST_TXT_PATH")
@@ -158,6 +160,11 @@ class BeatSaberPlaylist():
         self.max_request_per_viewer: str = conf.get("MAX_REQUEST_PER_VIEWER")
         self.request_conditions = conf.get("request_condition")
         self.current_index = 0
+        if add_data_listener:
+            self.data_listener = BSDataListener(self)
+            asyncio.run(self.data_listener.main())
+
+
         
         pass
 
@@ -231,12 +238,23 @@ class BeatSaberPlaylist():
         self.actualize_obs_queue()
         return self.get_song_at_index(self.current_index)
 
+    def set_song_from_datapuller(self,data):
+        s_list = bst.get_songs_from_bplist(self.playlist_path)
+        for i,s in enumerate(s_list):
+            if s.get('key','') == data.get('BSRKey'):
+                self.current_index = i
+                self.actualize_obs_queue()
+            else:
+                print('curent sound is out of playlist')               
+
+        pass
 
     def reinitialize_playlist(self) -> None:
         bst.clear_songs_from_bplist(self.playlist_path)
         self.current_index = 0
         self.actualize_obs_queue()
         pass
+
 
     def get_song_at_index(self,index:int)->dict|None:
         try:
@@ -294,7 +312,7 @@ class BeatSaberPlaylist():
 
 
 
-playlist = BeatSaberPlaylist()
+playlist = BeatSaberPlaylist(add_data_listener=True)
 
 if __name__ == "__main__":
     # playlist.reinitialize_playlist()

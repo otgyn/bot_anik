@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dynamic Text</title>
+    <style>
+        @font-face {
+            font-family:  retro-pixel-petty-5x5;
+            src: url("fonts/petty-5x5/retro-pixel-petty-5x5.ttf.woff2")format('woff2');
+        }   
+        body {
+            color: #723636;
+            font-family: retro-pixel-petty-5x5, sans-serif;
+            font-size: 20px;
+            line-height: 36px;
+            display: flex;
+            justify-content: left;
+            align-items: left;
+            height: 100vh;
+            margin: 0;
+            background-color: #c97d7d00;
+            color: #4f1c1c;
+        }
+    </style>
+</head>
+<body>
+    <div id="dynamic-text"></div>
+
+    <script>
+        function loadText() {
+            fetch('map.json')
+                .then(response => response.json())
+                .then(data => {
+                    let text = 'Current track: {SongName} \n Artist: {SongAuthor}\n Mapper: {Mapper}';
+                    for (let key in data) {
+                        text = text.replace(`{${key}}`, data[key]);
+                    }
+                    document.getElementById('dynamic-text').innerText = text;
+                })
+                .catch(error => console.error('Error loading JSON:', error));
+        }
+
+        // Load text initially and set up interval for reloading
+        loadText();
+        setInterval(loadText, 1000);  // Adjust this interval as needed
+    </script>
+</body>
+</html>

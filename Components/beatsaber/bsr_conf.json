@@ -1,8 +1,9 @@
 {
     "CUSTOM_PLAYLIST_PATH":"./Components/beatsaber/sample.json",
-    "OBS_REQUEST_TXT_PATH":"./Components/beatsaber/",
+    "OBS_REQUEST_TXT_PATH":"./Components/beatsaber/OBS_TXT/",
     "PLAYLIST_MAX_SIZE":15,
     "MAX_REQUEST_PER_FOLLOWER":5,
+    "MAX_REQUEST_PER_VIEWER":1,
     "request_condition":{
         "declaredAi" : ["None"],
         "nsfw" : [false],
@@ -15,7 +16,10 @@
             "duration" : [75,300]
             },
         "versions": {
-                "diffs": ["Easy", "Normal", "Hard"]
+                "diffs": ["Easy", "Normal","Hard"],
+                "nps":[1,5], 
+                "njs":[5,15],
+                "characteristic": ["Standard"]         
             }
         }
 }

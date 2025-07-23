@@ -21,6 +21,7 @@ Allow you to create custom '!' commands to trigger actions on you stream
 ## Available components
 ### beatsaber request:
 #### Features
+
 - a component allowing you viewer to request songs with '!bsr {key}' command where {key} is the custom song beatsaver key you can find here https://beatsaver.com/mappers
 
 - Add some moderation command too to control the playlist
@@ -30,7 +31,6 @@ Allow you to create custom '!' commands to trigger actions on you stream
 - Dynamically update some txt to use on your OBS overlays
 
 - Can filter allowed tracks on some conditions stored in a JSON
-
 
 #### Quickstart:
 ##### Beat saber custom playlist:
@@ -42,6 +42,17 @@ Allow you to create custom '!' commands to trigger actions on you stream
 
 ##### Ensure 'Component_beatsaber' isnt commented in you '__init__.py' component list
 ##### (re)launch your __init.py
+
+### beatsaber Datapuller:
+Require BSDataPuller Mod
+
+#### Feature
+A component allowing to grab real time game informations about map and gameplay
+
+#### Quickstart:
+##### Install BSDataPuller mod
+##### Create or customize your custom html layout
+##### That's all
 
 
 ### Custom component:

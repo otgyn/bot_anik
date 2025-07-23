@@ -161,7 +161,7 @@ class BeatSaberPlaylist():
         self.request_conditions = conf.get("request_condition")
         self.current_index = 0
         if add_data_listener:
-            self.data_listener = BSDataListener(self)
+            self.data_listener = BSDataListener(playlist = self)
             asyncio.run(self.data_listener.main())
 
 
@@ -241,11 +241,12 @@ class BeatSaberPlaylist():
     def set_song_from_datapuller(self,data):
         s_list = bst.get_songs_from_bplist(self.playlist_path)
         for i,s in enumerate(s_list):
-            if s.get('key','') == data.get('BSRKey'):
+            if s.get('hash','') == data.get('Hash'):
                 self.current_index = i
                 self.actualize_obs_queue()
-            else:
-                print('curent sound is out of playlist')               
+                return True
+        
+        print('current sound is out of playlist')               
 
         pass
 
@@ -301,6 +302,15 @@ class BeatSaberPlaylist():
                 log+=f'''{i} - {song['songName']} requested by {song['requester']}
                 '''
         return log
+    
+    # def save_datapuller_mapinfo_as_txt(self,data,to_get=["SongName","SongAuthor","Mapper","Difficulty","BPM","NJS"]):
+    #     for k in to_get:
+    #         info = data.get(k)
+    #         bst.write_obs_txt(self.obs_txt_path+f"currentTrack_{k}.txt",info)
+
+
+    #     pass
+
 
 
 

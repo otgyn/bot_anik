@@ -50,3 +50,4 @@ Allow you to create custom '!' commands to trigger actions on you stream
 
 Scope:
 http://localhost:4343/oauth?scopes=user:read:chat%20user:write:chat%20user:bot%20moderator:read:followers&force_verify=true
+

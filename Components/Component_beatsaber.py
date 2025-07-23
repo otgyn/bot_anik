@@ -13,6 +13,19 @@ import datetime
 conf_path = r'./Components/beatsaber/bsr_conf.json'
 minimal_follow_time = 60
 
+async def get_viewer_following_time(chatter:twitchio.Chatter):
+    follow_info = await chatter.follow_info()
+    if follow_info is None:
+        return 0
+    else:
+        # check if follow_inf as attribute followed_at
+        if hasattr(follow_info, "followed_at"):
+            followed_at = follow_info.followed_at
+            follow_time = datetime.datetime.now()-followed_at
+            follow_time = follow_time.total_seconds()
+        else:
+            follow_time = 0
+    return follow_time
 
 class BeatsaberComponent(commands.Component):
     # An example of a Component with some simple commands and listeners
@@ -26,23 +39,15 @@ class BeatsaberComponent(commands.Component):
 
     def is_meetting_condition():
         async def predicate(ctx: commands.Context) -> bool:
-            follow_info = await ctx.chatter.follow_info()
+            
             if (ctx.chatter.broadcaster 
-                # or ctx.chatter.moderator
+                or ctx.chatter.moderator
                 ):
                 return True
-            if follow_info is None:
-                return False
-            else:
-                # check if follow_inf as attribute followed_at
-                if hasattr(follow_info, "followed_at"):
-                    followed_at = follow_info.followed_at
-                    follow_time = datetime.datetime.now()-followed_at
-                    follow_time = follow_time.total_seconds()
-                else:
-                    follow_time = 0
             
-            if follow_time<minimal_follow_time:
+            follow_time = get_viewer_following_time(ctx.chatter)
+            
+            if follow_time < minimal_follow_time:
                 return False
 
             return True
@@ -67,30 +72,27 @@ class BeatsaberComponent(commands.Component):
         '''
         await ctx.reply(f"Hi {ctx.chatter.mention}, {message}")
 
-    @is_meetting_condition()
+    # @is_meetting_condition()
     @commands.command()
     async def bsr(self, ctx: commands.Context, *, message: str) -> None:
-        """user ask for a song to be added on the list:
-                playlist fit playlist condition
-                    user fit user condition
-                        request fit sound condition
-                            sound is added to playlist with user id
-                            sound is added to beatsaber custom playlist
-                        release:
-                            send message with explaination
-                    explain condition to user:
-                        "you need to follow the channel for request"
-                else:
-                    explain why playlist is closed
-                todo add mention
+        """add song based on bsr key
         """
         try:
-            passed_check,log = playlist.add_song_to_list(message,
+            passed_check,log = await playlist.add_song_to_list(message,
                                                          requester=ctx.chatter
                                                          )
         except Exception as e:
             passed_check = False
             log = f"  Error while adding tracks: {e}"
+
+
+        await ctx.send(ctx.chatter.mention+': '+ log)
+
+    @commands.command()
+    async def queue(self, ctx: commands.Context) -> None:
+        """Display upcoming tracks in the queue
+        """
+        log = playlist.get_playlist_list(include_future=True)
 
 
         await ctx.send(ctx.chatter.mention+': '+ log)
@@ -123,8 +125,8 @@ class BeatsaberComponent(commands.Component):
             case s if s.startswith('extend'):
                 ''' add slot in the queue'''
                 try:
-                    message.replace('extend','')
-                    offset = int(message)
+                    str_int = s.replace('extend','')
+                    offset = int(str_int)
                     playlist.queue_limit += offset
                     await ctx.send(f'Beatsaber playlist limit is now {playlist.queue_limit}')
                 except:
@@ -152,13 +154,14 @@ class BeatSaberPlaylist():
         self.obs_txt_path: str = conf.get("OBS_REQUEST_TXT_PATH")
         self.is_open = False
         self.queue_limit: str = conf.get("PLAYLIST_MAX_SIZE")
-        self.max_request_per_viewer: str = conf.get("MAX_REQUEST_PER_FOLLOWER")
+        self.max_request_per_follower: str = conf.get("MAX_REQUEST_PER_FOLLOWER")
+        self.max_request_per_viewer: str = conf.get("MAX_REQUEST_PER_VIEWER")
         self.request_conditions = conf.get("request_condition")
         self.current_index = 0
         
         pass
 
-    def add_song_to_list(self, key:str, requester : twitchio.Chatter) -> None:
+    async def add_song_to_list(self, key:str, requester : twitchio.Chatter) -> None:
 
         file_path = self.playlist_path
 
@@ -181,11 +184,17 @@ class BeatSaberPlaylist():
                     else:
                         return False, 'This track has already been played'
         # check for already submitted song by this user
-        if requester and (not requester.moderator and 
+        if requester and (
+            # not requester.moderator and 
             not requester.subscriber and 
             not requester.broadcaster):
-            if count >= self.max_request_per_viewer:
-                return False, f'max request per viewer is {self.max_request_per_viewer}'
+
+            follow_time = await get_viewer_following_time(requester)
+
+            if follow_time>0 and self.max_request_per_follower:
+                return False, f'max request per follower is {self.max_request_per_follower}'
+            elif count >= self.max_request_per_viewer:
+                return False, f'max request per non following viewer is {self.max_request_per_viewer}'
         
         info = bst.get_song_info_by_id(key)
         if info is None:
@@ -250,25 +259,39 @@ class BeatSaberPlaylist():
                 bst.write_obs_txt(self.obs_txt_path+f"track_{str(i)}_{k}.txt", text)  
 
 
-        # if len(current_song_list) >0:
-        #     current_text = f"Current: {current_song_list[self.current_index]['songName']}\n"            
-        # else:
-        #     current_text = "No songs in playlist."
+    def get_playlist_list(self,
+                          include_past=False,
+                          include_current=False,
+                          include_future=False)->str:
+        song_list = bst.get_songs_from_bplist(self.playlist_path)
+        log = f'''Playlist length: {len(song_list)}/{self.queue_limit}                        
+                Current index: {self.current_index}\n
+                '''
+
+        for i,song in enumerate(song_list):
+            if include_past and i<self.current_index:
+                if i==0:
+                    log+='Already played:\n'
+                log+=f'''{i} - {song['songName']} requested by {song['requester']}
+                '''
+            if include_current and i==self.current_index:
+                log+=f'''Current song:\n{song['songName']} requested by {song['requester']}
+               '''
+            if include_future and i>self.current_index:
+                if i==self.current_index+1:
+                    log+='To come:\n'''
+                log+=f'''{i} - {song['songName']} requested by {song['requester']}
+                '''
+        return log
 
 
-        # if self.current_index > 0:
-        #     previous_text = f"Previous: {current_song_list[self.current_index - 1]['songName']}\n"
-        # else:
-        #     previous_text = "No song. played for now"
 
-        # if self.current_index < len(current_song_list) -1:
-        #     next_text = f"Next: {current_song_list[self.current_index + 1]['songName']}\n"
-        # else:
-        #     next_text = "This is the last song in the cue."
 
-        # bst.write_obs_txt(self.obs_txt_path+"current.txt", current_text)  
-        # bst.write_obs_txt(self.obs_txt_path+"previous.txt", previous_text)
-        # bst.write_obs_txt(self.obs_txt_path+"next.txt", next_text)
+
+
+
+
+
 
 
 playlist = BeatSaberPlaylist()

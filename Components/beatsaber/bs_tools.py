@@ -34,6 +34,7 @@ def get_songs_from_bplist(file_path):
     playlist = load_json_as_dic(file_path)
     return playlist['songs']
 
+
 def write_obs_txt(path, text):
     with open(path, 'w', encoding='utf-8') as file:
         file.write(text)
@@ -99,7 +100,9 @@ to_watch ={
     },
     'versions': {
 
-            'diffs': ['Easy', 'Normal', 'Hard'],                
+            'diffs': ['Easy', 'Normal', 'Hard'],
+            'nps':(1,5), 
+            'characteristic': ['Standard'],              
         
         }
 
@@ -107,7 +110,7 @@ to_watch ={
     
 def check_song_conditions(song_info,conditions=to_watch):
     valid = True
-    log = "This track conditions"
+    log = "This track pass all conditions\n"
 
     for k,value in conditions.items():
         match k:
@@ -141,24 +144,65 @@ def check_song_conditions(song_info,conditions=to_watch):
             case 'versions':
                 last = song_info.get('versions',[None])[-1]
                 if last is not [None]:
-                    for k2,v2 in value.items():
-                        match k2:
-                            case 'diffs':
-                                diff_list = last.get('diffs',[])
-                                difficulty_check = False
-                                for diff in diff_list:
-                                    if diff.get('difficulty',None) in v2:
-                                        difficulty_check = True
+                    diff_list = last.get('diffs',[])
+                    for diff in diff_list:
+                        check = True
+                        check_log=''
+                        for k2,v2 in value.items():                       
+                            match k2:                                
+                                case 'diffs':                                    
+                                    if diff.get('difficulty',None) not in v2: 
+                                        log_message=f'difficultys in: {v2}\n'
+                                        check=False
+                                        if check_log.find(log_message)==-1:
+                                            check_log += log_message
+                                        break 
+                                                                          
+                                case 'nps':
+                                    nps = diff.get(k2,None)
+                                    if nps < v2[0] or nps > v2[1]:
+                                        log_message=f'note per second between {v2[0]} and {v2[1]} \n '
+                                        check=False
+                                        if check_log.find(log_message)==-1:
+                                            check_log += log_message
+                                        break   
+                                case 'njs':
+                                    njs = diff.get(k2,None)
+                                    if njs < v2[0] or njs > v2[1]:
+                                        check = False
+                                        log_message=f'note jump speed between {v2[0]} and {v2[1]}\n ' 
+                                        if check_log.find(log_message)==-1:
+                                            check_log += log_message                                        
+                                        break                                        
+                                case 'characteristic':
+                                    charac = diff.get(k2,None)
+                                    if charac not in v2:
+                                        check = False
+                                        log_message=f'map type in {v2}\n '
+                                        if check_log.find(log_message)==-1:
+                                            check_log += log_message
+                                        
                                         break
-                                if not difficulty_check:
-                                    return False,f'At least one of those difficultys need to be available for the track to be allowed: {v2}'            
+                        if check:
+                            log+=f'Map {diff.get('characteristic',None)} {diff.get('difficulty',None)} fits filter'
+                            break
+                    if not check:
+                        return False,f'''None of the maps of this track do meet those requìrements:\n
+                        {check_log}
+                        '''
+                                    
+                                        
+
+
     return valid,log
 
 
 
 if __name__ == "__main__":
     # Example usage
-    song_id = "d1cc"
+    song_id = "43a1f"
     song_info = get_song_info_by_id(song_id)
+    check_pass,log = check_song_conditions(song_info)
+
     print(song_info)
 
